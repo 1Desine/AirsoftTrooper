@@ -229,10 +229,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b532dc58af07f5d41b6e4bcce18f57e3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  reconceliationThreshold: 10
+  reconceliationThreshold: 0.01
   reconceliationCooldownTime: 1
-  extrapolationLimit: 0.5
-  extrapolationMultiplayer: 1.2
   serverSphere: {fileID: 3787596361981526508}
   clientSphere: {fileID: 6914260925868953367}
 --- !u!114 &4101630827137740894
@@ -267,9 +265,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: df2868252ab5c4d1da357e8f11f1b524, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  SyncPositionX: 1
-  SyncPositionY: 1
-  SyncPositionZ: 1
+  SyncPositionX: 0
+  SyncPositionY: 0
+  SyncPositionZ: 0
   SyncRotAngleX: 1
   SyncRotAngleY: 1
   SyncRotAngleZ: 1
@@ -283,7 +281,7 @@ MonoBehaviour:
   UseQuaternionCompression: 0
   UseHalfFloatPrecision: 0
   InLocalSpace: 0
-  Interpolate: 1
+  Interpolate: 0
   SlerpPosition: 0
   authorityMode: 1
 --- !u!1 &8389927709506022752

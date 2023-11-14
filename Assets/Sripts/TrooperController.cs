@@ -37,20 +37,18 @@ public struct StatePayload : INetworkSerializable {
         serializer.SerializeValue(ref tick);
         serializer.SerializeValue(ref networkObjectId);
         serializer.SerializeValue(ref position);
+        serializer.SerializeValue(ref velocity);
     }
 }
 
-[RequireComponent(typeof(Rigidbody))]
-[RequireComponent(typeof(CapsuleCollider))]
 public class TrooperController : NetworkBehaviour {
-
     Rigidbody body;
     new CapsuleCollider collider;
     ClientNetworkTransform clientNetworkTransform;
 
     // Netcode general
     NetworkTimer networkTimer;
-    const float serverTickRate = 20f; // set to 60
+    const float serverTickRate = 30f;
     const int bufferSize = 1024;
 
     // Network client specific
@@ -63,7 +61,7 @@ public class TrooperController : NetworkBehaviour {
     CircularBuffer<StatePayload> serverStateBuffer;
     Queue<InputPayload> serverInputQueue;
     [Header("Netcode")]
-    [SerializeField] float reconceliationThreshold = 10f;
+    [SerializeField] float reconceliationThreshold = 0.1f;
     [SerializeField] float reconceliationCooldownTime = 1f;
     [SerializeField] Transform serverSphere;
     [SerializeField] Transform clientSphere;
@@ -93,18 +91,18 @@ public class TrooperController : NetworkBehaviour {
     private void Start() {
         serverSphere.parent = null;
         clientSphere.parent = null;
+        body.isKinematic = false;
     }
     private void Update() {
-        networkTimer.Update(Time.deltaTime);
-        reconceliationTimer.Tick(Time.deltaTime);
-
-
         if (IsOwner) {
             if (Input.GetKeyDown(KeyCode.Q)) transform.position -= transform.forward * 10;
             if (Input.GetKeyDown(KeyCode.E)) transform.position += transform.forward * 10;
         }
-    }
-    private void FixedUpdate() {
+
+        clientSphere.position = transform.position; // DEBUG SPHERE
+
+        reconceliationTimer.Tick(Time.deltaTime);
+        networkTimer.Update(Time.deltaTime);
         while (networkTimer.ShouldTick()) {
             HandleClientTick();
             HandleServerTick();
@@ -119,17 +117,13 @@ public class TrooperController : NetworkBehaviour {
         if (!IsServer) return;
 
         var bufferIndex = -1;
-        SwitchAuthorityMode(AuthorityMode.Server);
-        body.isKinematic = false; //
         while (serverInputQueue.Count > 0) {
             InputPayload inputPayLoad = serverInputQueue.Dequeue();
 
             bufferIndex = inputPayLoad.tick % bufferSize;
             StatePayload statePayload = ProcessMovement(inputPayLoad);
-
             serverStateBuffer.Add(statePayload, bufferIndex);
         }
-        SwitchAuthorityMode(AuthorityMode.Client);
 
         if (bufferIndex == -1) return;
         SendToClientRpc(serverStateBuffer.Get(bufferIndex));
@@ -140,8 +134,13 @@ public class TrooperController : NetworkBehaviour {
     }
     [ClientRpc]
     private void SendToClientRpc(StatePayload statePayload) {
-        if (IsOwner == false) return;
-        lastServerState = statePayload;
+        if (IsOwner) {
+            lastServerState = statePayload;
+        }
+        else {
+            transform.position = statePayload.position;
+            body.velocity = statePayload.velocity;
+        }
     }
     private void HandleClientTick() {
         if (!IsClient || !IsOwner) return;
@@ -165,7 +164,7 @@ public class TrooperController : NetworkBehaviour {
         StatePayload statePayload = ProcessMovement(inputPayLoad);
         clientStateBuffer.Add(statePayload, bufferIndex);
     }
-    private StatePayload ProcessMovement(InputPayload input) {        
+    private StatePayload ProcessMovement(InputPayload input) {
         Move(input.inputVector);
 
         return new StatePayload() {
@@ -178,8 +177,6 @@ public class TrooperController : NetworkBehaviour {
 
     [ServerRpc]
     private void SendToServerRpc(InputPayload input) {
-        clientSphere.position = input.position; // DEBUG SPHERE
-
         serverInputQueue.Enqueue(input);
     }
     private bool ShouldReconcile() {
@@ -196,12 +193,14 @@ public class TrooperController : NetworkBehaviour {
         int bufferIndex = lastServerState.tick % bufferSize;
         if (bufferIndex - 1 < 0) return; // Not enough informaion to reconcile
 
-        float positionErrof = Vector3.Distance(lastServerState.position, clientStateBuffer.Get(bufferIndex).position);
+        float positionError = Vector3.Distance(lastServerState.position, clientStateBuffer.Get(bufferIndex).position);
 
-        Debug.Log("positionErrof: " + positionErrof);
+        Debug.Log("Server: " + lastServerState.position);
+        Debug.Log("Client: " + clientStateBuffer.Get(bufferIndex).position);
+        Debug.Log("The margin: " + positionError);
 
-        if (positionErrof > reconceliationThreshold) {
-            Debug.Log("Had to Reconcile, diviation is: " + positionErrof);
+        if (positionError > reconceliationThreshold) {
+            Debug.Log("Had to Reconcile, diviation is: " + positionError);
             ReconcileState();
             reconceliationTimer.Start();
         }
@@ -211,13 +210,12 @@ public class TrooperController : NetworkBehaviour {
     }
     private void ReconcileState() {
         transform.position = lastServerState.position;
-        body.velocity = lastServerState.velocity; // rewindState.velocity is v3.zero for some reason
-        //Debug.Log("rewindState vel: " + rewindState.velocity);
+        body.velocity = lastServerState.velocity;
 
         clientStateBuffer.Add(lastServerState, lastServerState.tick);
 
         // Replay all inputs from the rewind state to the current state
-        int tickToReplay = lastServerState.tick + 1;
+        int tickToReplay = lastServerState.tick;
 
         while (tickToReplay < networkTimer.currentTick) {
             int bufferIndex = tickToReplay % bufferSize;
@@ -230,12 +228,9 @@ public class TrooperController : NetworkBehaviour {
     private void Move(Vector2 moveInput) {
         Vector3 moveDirection = transform.forward * moveInput.y + transform.right * moveInput.x;
 
-        float moveSpeed = 5f;
+        float moveSpeed = 10f;
         //transform.position += moveDirection * moveSpeed * networkTimer.minTimeBetweenTicks;
         body.velocity += moveDirection * moveSpeed * networkTimer.minTimeBetweenTicks;
-
-
-        Debug.Log("Move, vel = " + body.velocity);
     }
 
 

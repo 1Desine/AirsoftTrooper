@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Net.Sockets;
+using System.Net;
 using Unity.Multiplayer.Samples.Utilities.ClientAuthority;
 using Unity.Netcode;
 using UnityEngine;
@@ -51,6 +53,8 @@ public class TrooperController : NetworkBehaviour {
     const float serverTickRate = 30f;
     const int bufferSize = 1024;
 
+    DateTime awakeDateTime; // this will differ on the server and on the client, it's needed to sync tick
+
     // Network client specific
     CircularBuffer<StatePayload> clientStateBuffer;
     CircularBuffer<InputPayload> clientInputBuffer;
@@ -78,6 +82,8 @@ public class TrooperController : NetworkBehaviour {
 
         // Network setting
         networkTimer = new NetworkTimer(serverTickRate);
+        awakeDateTime = GetNetworkTime();
+
         clientStateBuffer = new CircularBuffer<StatePayload>(bufferSize);
         clientInputBuffer = new CircularBuffer<InputPayload>(bufferSize);
         serverStateBuffer = new CircularBuffer<StatePayload>(bufferSize);
@@ -85,13 +91,14 @@ public class TrooperController : NetworkBehaviour {
 
         reconceliationTimer = new CountdownTimer(reconceliationCooldownTime);
     }
-    private void SwitchAuthorityMode(AuthorityMode mode) {
-        clientNetworkTransform.authorityMode = mode;
-    }
     private void Start() {
         serverSphere.parent = null;
         clientSphere.parent = null;
         body.isKinematic = false;
+
+        if (IsServer) SyncNetworkTimerClientRpc(awakeDateTime);
+        Debug.Log(GetNetworkTime().TimeOfDay.TotalSeconds);
+        Debug.Log(NetworkManager.ServerTime.TimeAsFloat);
     }
     private void Update() {
         if (IsOwner) {
@@ -102,11 +109,46 @@ public class TrooperController : NetworkBehaviour {
         clientSphere.position = transform.position; // DEBUG SPHERE
 
         reconceliationTimer.Tick(Time.deltaTime);
-        networkTimer.Update(Time.deltaTime);
+    }
+    private void FixedUpdate() {
+        NetworkTimerTick();
+    }
+    private void NetworkTimerTick() {
+        networkTimer.Update(Time.fixedDeltaTime);
         while (networkTimer.ShouldTick()) {
             HandleClientTick();
             HandleServerTick();
         }
+        Debug.Log("time" + networkTimer.timer);
+        Debug.Log("tick" + networkTimer.currentTick);
+    }
+    public DateTime GetNetworkTime() {
+        var ntpData = new byte[48];
+        ntpData[0] = 0x1B;
+
+        var ntpServer = "pool.ntp.org";
+        var addresses = Dns.GetHostEntry(ntpServer).AddressList;
+        var ipEndPoint = new IPEndPoint(addresses[0], 123);
+
+        using (var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)) {
+            socket.Connect(ipEndPoint);
+            socket.Send(ntpData);
+            socket.Receive(ntpData);
+            socket.Close();
+        }
+
+        var intPart = (ulong)ntpData[40] << 24 | (ulong)ntpData[41] << 16 | (ulong)ntpData[42] << 8 | ntpData[43];
+        var fractPart = (ulong)ntpData[44] << 24 | (ulong)ntpData[45] << 16 | (ulong)ntpData[46] << 8 | ntpData[47];
+
+        var milliseconds = (intPart * 1000) + (fractPart * 1000 / 0x100000000L);
+        var networkDateTime = new DateTime(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddMilliseconds((long)milliseconds);
+
+        return networkDateTime.ToLocalTime();
+    }
+    [ClientRpc]
+    private void SyncNetworkTimerClientRpc(DateTime serverGlobalTimeAtSpawn) {
+        float delta = (float)(awakeDateTime - serverGlobalTimeAtSpawn).TotalSeconds;
+        networkTimer.Update(delta);
     }
     private void HandleIntrapolation() {
         if (IsOwner || IsServer) return;

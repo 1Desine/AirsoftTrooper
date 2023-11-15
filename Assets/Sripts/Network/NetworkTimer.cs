@@ -1,8 +1,8 @@
 public class NetworkTimer {
 
-    private float timer;
+    public float timer;
     public float minTimeBetweenTicks { get; }
-    public int currentTick { get; private set; }
+    public int currentTick;
 
     public NetworkTimer(float serverTickRate) {
         minTimeBetweenTicks = 1f / serverTickRate;

@@ -43,7 +43,14 @@ public struct StatePayload : INetworkSerializable {
     }
 }
 
+
+
+
 public class TrooperController : NetworkBehaviour {
+    [SerializeField] Transform head;
+    [SerializeField] float moveSpeed;
+    Vector2 lookVector;
+
     Rigidbody body;
     new CapsuleCollider collider;
     ClientNetworkTransform clientNetworkTransform;
@@ -53,13 +60,13 @@ public class TrooperController : NetworkBehaviour {
     const float serverTickRate = 30f;
     const int bufferSize = 1024;
 
-    DateTime awakeDateTime; // this will differ on the server and on the client, it's needed to sync tick
 
     // Network client specific
     CircularBuffer<StatePayload> clientStateBuffer;
     CircularBuffer<InputPayload> clientInputBuffer;
     StatePayload lastServerState;
     StatePayload lastProcessedState;
+    CountdownTimer reconceliationTimer;
 
     // Netcode server specific
     CircularBuffer<StatePayload> serverStateBuffer;
@@ -70,10 +77,10 @@ public class TrooperController : NetworkBehaviour {
     [SerializeField] Transform serverSphere;
     [SerializeField] Transform clientSphere;
 
-    StatePayload intrapolationState;
+
+    DateTime awakeDateTime; // this will differ on the server and on the client, it's needed to sync tick
 
 
-    CountdownTimer reconceliationTimer;
 
     private void Awake() {
         body = GetComponent<Rigidbody>();
@@ -97,8 +104,6 @@ public class TrooperController : NetworkBehaviour {
         body.isKinematic = false;
 
         if (IsServer) SyncNetworkTimerClientRpc(awakeDateTime);
-        Debug.Log(GetNetworkTime().TimeOfDay.TotalSeconds);
-        Debug.Log(NetworkManager.ServerTime.TimeAsFloat);
     }
     private void Update() {
         if (IsOwner) {
@@ -106,9 +111,9 @@ public class TrooperController : NetworkBehaviour {
             if (Input.GetKeyDown(KeyCode.E)) transform.position += transform.forward * 10;
         }
 
-        clientSphere.position = transform.position; // DEBUG SPHERE
-
         reconceliationTimer.Tick(Time.deltaTime);
+
+        HandleLook();
     }
     private void FixedUpdate() {
         NetworkTimerTick();
@@ -119,8 +124,7 @@ public class TrooperController : NetworkBehaviour {
             HandleClientTick();
             HandleServerTick();
         }
-        Debug.Log("time" + networkTimer.timer);
-        Debug.Log("tick" + networkTimer.currentTick);
+        //Debug.Log("tick" + networkTimer.currentTick);
     }
     public DateTime GetNetworkTime() {
         var ntpData = new byte[48];
@@ -169,6 +173,7 @@ public class TrooperController : NetworkBehaviour {
 
         if (bufferIndex == -1) return;
         SendToClientRpc(serverStateBuffer.Get(bufferIndex));
+
         serverSphere.position = serverStateBuffer.Get(bufferIndex).position; // DEBUG SPHERE
     }
     private static float CalculateLatencyInMilliseconds(InputPayload inputPayload) {
@@ -200,11 +205,12 @@ public class TrooperController : NetworkBehaviour {
             inputVector = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")).normalized,
         };
 
-        clientInputBuffer.Add(inputPayLoad, bufferIndex);
         SendToServerRpc(inputPayLoad);
-
         StatePayload statePayload = ProcessMovement(inputPayLoad);
         clientStateBuffer.Add(statePayload, bufferIndex);
+        clientInputBuffer.Add(inputPayLoad, bufferIndex);
+
+        clientSphere.position = transform.position; // DEBUG SPHERE
     }
     private StatePayload ProcessMovement(InputPayload input) {
         Move(input.inputVector);
@@ -237,9 +243,9 @@ public class TrooperController : NetworkBehaviour {
 
         float positionError = Vector3.Distance(lastServerState.position, clientStateBuffer.Get(bufferIndex).position);
 
-        Debug.Log("Server: " + lastServerState.position);
-        Debug.Log("Client: " + clientStateBuffer.Get(bufferIndex).position);
-        Debug.Log("The margin: " + positionError);
+        //Debug.Log("Server: " + lastServerState.position);
+        //Debug.Log("Client: " + clientStateBuffer.Get(bufferIndex).position);
+        //Debug.Log("The margin: " + positionError);
 
         if (positionError > reconceliationThreshold) {
             Debug.Log("Had to Reconcile, diviation is: " + positionError);
@@ -247,7 +253,6 @@ public class TrooperController : NetworkBehaviour {
             reconceliationTimer.Start();
         }
 
-        //intrapolationState = lastProcessedState; // intrapolation for clients
         lastProcessedState = lastServerState;
     }
     private void ReconcileState() {
@@ -273,6 +278,12 @@ public class TrooperController : NetworkBehaviour {
         float moveSpeed = 10f;
         //transform.position += moveDirection * moveSpeed * networkTimer.minTimeBetweenTicks;
         body.velocity += moveDirection * moveSpeed * networkTimer.minTimeBetweenTicks;
+    }
+    private void HandleLook() {
+        lookVector += InputManager.Instance.LookV2D() * 0.05f;
+        lookVector.y = Mathf.Clamp(lookVector.y, -90, 90);
+        transform.eulerAngles = Vector3.up * lookVector.x;
+        head.localEulerAngles = Vector3.right * -lookVector.y;
     }
 
 

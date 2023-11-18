@@ -1,3 +1,4 @@
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -10,15 +11,15 @@ public class LobbyUI : MonoBehaviour {
 
     private void Awake() {
         StartServerButton.onClick.AddListener(() => {
-            MyNetworkManager.Singleton.StartServer();
+            NetworkManager.Singleton.StartServer();
             Hide();
         });
         StartHostButton.onClick.AddListener(() => {
-            MyNetworkManager.Singleton.StartHost();
+            NetworkManager.Singleton.StartHost();
             Hide();
         });
         StartClientButton.onClick.AddListener(() => {
-            MyNetworkManager.Singleton.StartClient();
+            NetworkManager.Singleton.StartClient();
             Hide();
         });
     }

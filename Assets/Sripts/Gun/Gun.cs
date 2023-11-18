@@ -3,7 +3,6 @@ using UnityEngine;
 
 public class Gun : MonoBehaviour {
 
-    GunHandler gunHandler;
 
     [Header("Positioning")]
     [SerializeField] Transform holdPoint;
@@ -41,6 +40,7 @@ public class Gun : MonoBehaviour {
 
 
 
+    GunHandler gunHandler;
     private void Awake() {
         gunHandler = transform.parent.GetComponent<GunHandler>();
 
@@ -64,6 +64,7 @@ public class Gun : MonoBehaviour {
         gunHandler.OnFireButtonUp += GunHandler_OnShootButtonUp;
         gunHandler.OnReloadButtonDown += GunHandler_OnReloadButtonDown;
         gunHandler.OnReloadButton += GunHandler_OnReloadButton;
+        gunHandler.OnReloadButtonUp += GunHandler_OnReloadButtonUp;
     }
     private void OnDisable() {
         gunHandler.OnFireButtonDown -= GunHandler_OnShootButtonDown;
@@ -71,12 +72,14 @@ public class Gun : MonoBehaviour {
         gunHandler.OnFireButtonUp -= GunHandler_OnShootButtonUp;
         gunHandler.OnReloadButtonDown -= GunHandler_OnReloadButtonDown;
         gunHandler.OnReloadButton -= GunHandler_OnReloadButton;
+        gunHandler.OnReloadButtonUp -= GunHandler_OnReloadButtonUp;
     }
     virtual protected void GunHandler_OnShootButtonDown() => Debug.LogError("me. Default GunHandler_OnShootButtonDown", this);
     virtual protected void GunHandler_OnShootButton() => Debug.LogError("me. Default GunHandler_OnShootButton", this);
     virtual protected void GunHandler_OnShootButtonUp() => Debug.LogError("me. Default GunHandler_OnShootButtonUp", this);
     virtual protected void GunHandler_OnReloadButtonDown() => Debug.LogError("me. Default GunHandler_OnReloadButtonDown", this);
     virtual protected void GunHandler_OnReloadButton() => Debug.LogError("me. Default GunHandler_OnReloadButton", this);
+    virtual protected void GunHandler_OnReloadButtonUp() => Debug.LogError("me. Default GunHandler_OnReloadButtonUp", this);
 
 
 }

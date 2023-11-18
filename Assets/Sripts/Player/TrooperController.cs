@@ -56,9 +56,10 @@ public class TrooperController : NetworkBehaviour {
     ClientNetworkTransform clientNetworkTransform;
 
     // Netcode general
-    NetworkTimer networkTimer;
     const float serverTickRate = 30f;
     const int bufferSize = 1024;
+    private int CurrentTick { get { return TickManager.Instance.CurrentTick; } }
+    private float minTimeBetweenTicks;
 
 
     // Network client specific
@@ -78,7 +79,6 @@ public class TrooperController : NetworkBehaviour {
     [SerializeField] Transform clientSphere;
 
 
-    DateTime awakeDateTime; // this will differ on the server and on the client, it's needed to sync tick
 
 
 
@@ -87,9 +87,8 @@ public class TrooperController : NetworkBehaviour {
         collider = GetComponent<CapsuleCollider>();
         clientNetworkTransform = GetComponent<ClientNetworkTransform>();
 
-        // Network setting
-        networkTimer = new NetworkTimer(serverTickRate);
-        awakeDateTime = GetNetworkTime();
+        minTimeBetweenTicks = 1f / NetworkManager.NetworkTickSystem.TickRate;
+
 
         clientStateBuffer = new CircularBuffer<StatePayload>(bufferSize);
         clientInputBuffer = new CircularBuffer<InputPayload>(bufferSize);
@@ -97,13 +96,12 @@ public class TrooperController : NetworkBehaviour {
         serverInputQueue = new Queue<InputPayload>();
 
         reconceliationTimer = new CountdownTimer(reconceliationCooldownTime);
+
     }
     private void Start() {
         serverSphere.parent = null;
         clientSphere.parent = null;
         body.isKinematic = false;
-
-        if (IsServer) SyncNetworkTimerClientRpc(awakeDateTime);
     }
     private void Update() {
         if (IsOwner) {
@@ -115,44 +113,15 @@ public class TrooperController : NetworkBehaviour {
 
         HandleLook();
     }
-    private void FixedUpdate() {
-        NetworkTimerTick();
+    private void OnEnable() {
+        TickManager.Instance.OnTick += HandleTick;
     }
-    private void NetworkTimerTick() {
-        networkTimer.Update(Time.fixedDeltaTime);
-        while (networkTimer.ShouldTick()) {
-            HandleClientTick();
-            HandleServerTick();
-        }
-        //Debug.Log("tick" + networkTimer.currentTick);
+    private void OnDisable() {
+        TickManager.Instance.OnTick -= HandleTick;
     }
-    public DateTime GetNetworkTime() {
-        var ntpData = new byte[48];
-        ntpData[0] = 0x1B;
-
-        var ntpServer = "pool.ntp.org";
-        var addresses = Dns.GetHostEntry(ntpServer).AddressList;
-        var ipEndPoint = new IPEndPoint(addresses[0], 123);
-
-        using (var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)) {
-            socket.Connect(ipEndPoint);
-            socket.Send(ntpData);
-            socket.Receive(ntpData);
-            socket.Close();
-        }
-
-        var intPart = (ulong)ntpData[40] << 24 | (ulong)ntpData[41] << 16 | (ulong)ntpData[42] << 8 | ntpData[43];
-        var fractPart = (ulong)ntpData[44] << 24 | (ulong)ntpData[45] << 16 | (ulong)ntpData[46] << 8 | ntpData[47];
-
-        var milliseconds = (intPart * 1000) + (fractPart * 1000 / 0x100000000L);
-        var networkDateTime = new DateTime(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddMilliseconds((long)milliseconds);
-
-        return networkDateTime.ToLocalTime();
-    }
-    [ClientRpc]
-    private void SyncNetworkTimerClientRpc(DateTime serverGlobalTimeAtSpawn) {
-        float delta = (float)(awakeDateTime - serverGlobalTimeAtSpawn).TotalSeconds;
-        networkTimer.Update(delta);
+    private void HandleTick() {
+        HandleClientTick();
+        HandleServerTick();
     }
     private void HandleIntrapolation() {
         if (IsOwner || IsServer) return;
@@ -193,7 +162,7 @@ public class TrooperController : NetworkBehaviour {
         if (!IsClient || !IsOwner) return;
         HandleServerReconciliation();
 
-        var currentTick = networkTimer.currentTick;
+        var currentTick = CurrentTick;
         var bufferIndex = currentTick % bufferSize;
 
         InputPayload inputPayLoad = new InputPayload() {
@@ -264,7 +233,7 @@ public class TrooperController : NetworkBehaviour {
         // Replay all inputs from the rewind state to the current state
         int tickToReplay = lastServerState.tick;
 
-        while (tickToReplay < networkTimer.currentTick) {
+        while (tickToReplay < CurrentTick) {
             int bufferIndex = tickToReplay % bufferSize;
             StatePayload recalculatedClientPayload = ProcessMovement(clientInputBuffer.Get(bufferIndex));
             clientStateBuffer.Add(recalculatedClientPayload, bufferIndex);
@@ -276,8 +245,8 @@ public class TrooperController : NetworkBehaviour {
         Vector3 moveDirection = transform.forward * moveInput.y + transform.right * moveInput.x;
 
         float moveSpeed = 10f;
-        //transform.position += moveDirection * moveSpeed * networkTimer.minTimeBetweenTicks;
-        body.velocity += moveDirection * moveSpeed * networkTimer.minTimeBetweenTicks;
+        //transform.position += moveDirection * moveSpeed * minTimeBetweenTicks;
+        body.velocity += moveDirection * moveSpeed * minTimeBetweenTicks;
     }
     private void HandleLook() {
         lookVector += InputManager.Instance.LookV2D() * 0.05f;

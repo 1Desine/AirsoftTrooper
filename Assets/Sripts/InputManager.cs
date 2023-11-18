@@ -10,11 +10,9 @@ public class InputManager : MonoBehaviour {
 
     public Action OnJump = () => { };
     public Action OnFireDown = () => { };
-    public Action OnFire = () => { };
     public Action OnFireUp = () => { };
     public Action OnReloadDown = () => { };
-    public Action OnReload = () => { };
-
+    public Action OnReloadUp = () => { };
 
     private void Awake() {
         Instance = this;
@@ -22,24 +20,17 @@ public class InputManager : MonoBehaviour {
         inputActions = new InputActions();
         inputActions.Enable();
 
-        inputActions.Trooper.Jump.started += context => OnJump();
-        inputActions.Trooper.Fire.started += context => OnFireDown();
-        inputActions.Trooper.Fire.canceled += context => OnFireUp();
-        inputActions.Trooper.Reload.started += context => OnReloadDown();
-
+        inputActions.Trooper.Jump.started += _ => OnJump();
+        inputActions.Trooper.Fire.started += _ => OnFireDown();
+        inputActions.Trooper.Fire.canceled += _ => OnFireUp();
+        inputActions.Trooper.Reload.started += _ => OnReloadDown();
+        inputActions.Trooper.Reload.canceled += _ => OnReloadUp();
     }
-    private void Update() {
-        if (inputActions.Trooper.Fire.inProgress) OnFire();
-        if (inputActions.Trooper.Reload.inProgress) OnReload();
-    }
-
 
     public Vector2 MoveV2N() => inputActions.Trooper.MoveV2N.ReadValue<Vector2>();
     public Vector2 LookV2D() => inputActions.Trooper.LookV2D.ReadValue<Vector2>();
-
-
-
-
+    public bool GetFireButton() => inputActions.Trooper.Fire.inProgress;
+    public bool GetReloadButton() => inputActions.Trooper.Reload.inProgress;
 
 
 }

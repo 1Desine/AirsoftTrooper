@@ -1863,7 +1863,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd73706bbf5226444a103227495b41a4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tickManager: {fileID: 620688552589127798, guid: 7ad81f6baf3205f4f9d6d7ad0acd5b69, type: 3}
+  tickManager: {fileID: 3732149610293611214, guid: 7ad81f6baf3205f4f9d6d7ad0acd5b69, type: 3}
+  trooper: {fileID: 5248511303205422043, guid: 1715bd9b945e2e54aa36384b3dc6dc60, type: 3}
+  bullet: {fileID: 6138587007879247287, guid: 1e5b4e28db9ffe444a36044cddb63de9, type: 3}
 --- !u!4 &1995112409
 Transform:
   m_ObjectHideFlags: 0

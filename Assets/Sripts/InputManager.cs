@@ -8,11 +8,11 @@ public class InputManager : MonoBehaviour {
 
     private InputActions inputActions;
 
-    public Action OnJump = () => { };
-    public Action OnFireDown = () => { };
-    public Action OnFireUp = () => { };
-    public Action OnReloadDown = () => { };
-    public Action OnReloadUp = () => { };
+    static public Action OnJump = () => { };
+    static public Action OnFireDown = () => { };
+    static public Action OnFireUp = () => { };
+    static public Action OnReloadDown = () => { };
+    static public Action OnReloadUp = () => { };
 
     private void Awake() {
         Instance = this;
@@ -27,10 +27,10 @@ public class InputManager : MonoBehaviour {
         inputActions.Trooper.Reload.canceled += _ => OnReloadUp();
     }
 
-    public Vector2 MoveV2N() => inputActions.Trooper.MoveV2N.ReadValue<Vector2>();
-    public Vector2 LookV2D() => inputActions.Trooper.LookV2D.ReadValue<Vector2>();
-    public bool GetFireButton() => inputActions.Trooper.Fire.inProgress;
-    public bool GetReloadButton() => inputActions.Trooper.Reload.inProgress;
+    static public Vector2 MoveV2N() => Instance.inputActions.Trooper.MoveV2N.ReadValue<Vector2>();
+    static public Vector2 LookV2D() => Instance.inputActions.Trooper.LookV2D.ReadValue<Vector2>();
+    static public bool GetFireButton() => Instance.inputActions.Trooper.Fire.inProgress;
+    static public bool GetReloadButton() => Instance.inputActions.Trooper.Reload.inProgress;
 
 
 }

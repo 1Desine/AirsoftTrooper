@@ -8,58 +8,54 @@ using UnityEngine;
 using Utilities;
 
 
-// reference https://youtu.be/-lGsuCEWkM0?si=gNsTcQw-mxeJTqac
-
-// Network variables should be value objects
-public struct InputPayload : INetworkSerializable {
-    public int tick;
-    public DateTime timestamp;
-    public ulong networkObjectId;
-    public Vector3 position;
-
-    public Vector3 inputVector;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter {
-        serializer.SerializeValue(ref tick);
-        serializer.SerializeValue(ref timestamp);
-        serializer.SerializeValue(ref networkObjectId);
-        serializer.SerializeValue(ref position);
-
-        serializer.SerializeValue(ref inputVector);
-    }
-}
-
-public struct StatePayload : INetworkSerializable {
-    public int tick;
-    public ulong networkObjectId;
-    public Vector3 position;
-    public Vector3 velocity;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter {
-        serializer.SerializeValue(ref tick);
-        serializer.SerializeValue(ref networkObjectId);
-        serializer.SerializeValue(ref position);
-        serializer.SerializeValue(ref velocity);
-    }
-}
-
-
-
-
 public class TrooperController : NetworkBehaviour {
+    // reference https://youtu.be/-lGsuCEWkM0?si=gNsTcQw-mxeJTqac
+
+    // Network variables should be value objects
+    public struct InputPayload : INetworkSerializable {
+        public int tick;
+        public DateTime timestamp;
+        public ulong networkObjectId;
+        public Vector3 position;
+
+        public Vector3 inputVector;
+
+        public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter {
+            serializer.SerializeValue(ref tick);
+            serializer.SerializeValue(ref timestamp);
+            serializer.SerializeValue(ref networkObjectId);
+            serializer.SerializeValue(ref position);
+
+            serializer.SerializeValue(ref inputVector);
+        }
+    }
+
+    public struct StatePayload : INetworkSerializable {
+        public int tick;
+        public ulong networkObjectId;
+        public Vector3 position;
+        public Vector3 velocity;
+
+        public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter {
+            serializer.SerializeValue(ref tick);
+            serializer.SerializeValue(ref networkObjectId);
+            serializer.SerializeValue(ref position);
+            serializer.SerializeValue(ref velocity);
+        }
+    }
+
+
+
+
     [SerializeField] Transform head;
     [SerializeField] float moveSpeed;
     Vector2 lookVector;
 
     Rigidbody body;
     new CapsuleCollider collider;
-    ClientNetworkTransform clientNetworkTransform;
 
     // Netcode general
-    const float serverTickRate = 30f;
     const int bufferSize = 1024;
-    private int CurrentTick { get { return TickManager.Instance.CurrentTick; } }
-    private float minTimeBetweenTicks;
 
 
     // Network client specific
@@ -83,11 +79,11 @@ public class TrooperController : NetworkBehaviour {
 
 
     private void Awake() {
+        Cursor.lockState = CursorLockMode.Locked;
+
+
         body = GetComponent<Rigidbody>();
         collider = GetComponent<CapsuleCollider>();
-        clientNetworkTransform = GetComponent<ClientNetworkTransform>();
-
-        minTimeBetweenTicks = 1f / NetworkManager.NetworkTickSystem.TickRate;
 
 
         clientStateBuffer = new CircularBuffer<StatePayload>(bufferSize);
@@ -96,7 +92,6 @@ public class TrooperController : NetworkBehaviour {
         serverInputQueue = new Queue<InputPayload>();
 
         reconceliationTimer = new CountdownTimer(reconceliationCooldownTime);
-
     }
     private void Start() {
         serverSphere.parent = null;
@@ -114,10 +109,10 @@ public class TrooperController : NetworkBehaviour {
         HandleLook();
     }
     private void OnEnable() {
-        TickManager.Instance.OnTick += HandleTick;
+        TickManager.OnTick += HandleTick;
     }
     private void OnDisable() {
-        TickManager.Instance.OnTick -= HandleTick;
+        TickManager.OnTick -= HandleTick;
     }
     private void HandleTick() {
         HandleClientTick();
@@ -136,7 +131,7 @@ public class TrooperController : NetworkBehaviour {
             InputPayload inputPayLoad = serverInputQueue.Dequeue();
 
             bufferIndex = inputPayLoad.tick % bufferSize;
-            StatePayload statePayload = ProcessMovement(inputPayLoad);
+            StatePayload statePayload = ProcessInput(inputPayLoad);
             serverStateBuffer.Add(statePayload, bufferIndex);
         }
 
@@ -144,9 +139,6 @@ public class TrooperController : NetworkBehaviour {
         SendToClientRpc(serverStateBuffer.Get(bufferIndex));
 
         serverSphere.position = serverStateBuffer.Get(bufferIndex).position; // DEBUG SPHERE
-    }
-    private static float CalculateLatencyInMilliseconds(InputPayload inputPayload) {
-        return (DateTime.Now - inputPayload.timestamp).Milliseconds / 1000f;
     }
     [ClientRpc]
     private void SendToClientRpc(StatePayload statePayload) {
@@ -162,10 +154,10 @@ public class TrooperController : NetworkBehaviour {
         if (!IsClient || !IsOwner) return;
         HandleServerReconciliation();
 
-        var currentTick = CurrentTick;
+        var currentTick = TickManager.CurrentTick;
         var bufferIndex = currentTick % bufferSize;
 
-        InputPayload inputPayLoad = new InputPayload() {
+        InputPayload inputPayload = new InputPayload() {
             tick = currentTick,
             timestamp = DateTime.UtcNow,
             networkObjectId = NetworkObjectId,
@@ -174,14 +166,14 @@ public class TrooperController : NetworkBehaviour {
             inputVector = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")).normalized,
         };
 
-        SendToServerRpc(inputPayLoad);
-        StatePayload statePayload = ProcessMovement(inputPayLoad);
+        SendToServerRpc(inputPayload);
+        StatePayload statePayload = ProcessInput(inputPayload);
         clientStateBuffer.Add(statePayload, bufferIndex);
-        clientInputBuffer.Add(inputPayLoad, bufferIndex);
+        clientInputBuffer.Add(inputPayload, bufferIndex);
 
         clientSphere.position = transform.position; // DEBUG SPHERE
     }
-    private StatePayload ProcessMovement(InputPayload input) {
+    private StatePayload ProcessInput(InputPayload input) {
         Move(input.inputVector);
 
         return new StatePayload() {
@@ -191,7 +183,6 @@ public class TrooperController : NetworkBehaviour {
             velocity = body.velocity,
         };
     }
-
     [ServerRpc]
     private void SendToServerRpc(InputPayload input) {
         serverInputQueue.Enqueue(input);
@@ -199,7 +190,7 @@ public class TrooperController : NetworkBehaviour {
     private bool ShouldReconcile() {
         bool isNewServerState = !lastServerState.Equals(default);
         bool isLastStateUndefinedOrDifferent = lastProcessedState.Equals(default)
-                                            || !lastProcessedState.Equals(lastServerState);
+                                           || !lastProcessedState.Equals(lastServerState);
 
         return isNewServerState && isLastStateUndefinedOrDifferent
             && !reconceliationTimer.IsRunning;
@@ -217,7 +208,7 @@ public class TrooperController : NetworkBehaviour {
         //Debug.Log("The margin: " + positionError);
 
         if (positionError > reconceliationThreshold) {
-            Debug.Log("Had to Reconcile, diviation is: " + positionError);
+            Debug.Log("TrooperController Reconcile, diviation is: " + positionError);
             ReconcileState();
             reconceliationTimer.Start();
         }
@@ -233,9 +224,9 @@ public class TrooperController : NetworkBehaviour {
         // Replay all inputs from the rewind state to the current state
         int tickToReplay = lastServerState.tick;
 
-        while (tickToReplay < CurrentTick) {
+        while (tickToReplay < TickManager.CurrentTick) {
             int bufferIndex = tickToReplay % bufferSize;
-            StatePayload recalculatedClientPayload = ProcessMovement(clientInputBuffer.Get(bufferIndex));
+            StatePayload recalculatedClientPayload = ProcessInput(clientInputBuffer.Get(bufferIndex));
             clientStateBuffer.Add(recalculatedClientPayload, bufferIndex);
             tickToReplay++;
         }
@@ -244,12 +235,11 @@ public class TrooperController : NetworkBehaviour {
     private void Move(Vector2 moveInput) {
         Vector3 moveDirection = transform.forward * moveInput.y + transform.right * moveInput.x;
 
-        float moveSpeed = 10f;
-        //transform.position += moveDirection * moveSpeed * minTimeBetweenTicks;
-        body.velocity += moveDirection * moveSpeed * minTimeBetweenTicks;
+        transform.position += moveDirection * moveSpeed * TickManager.deltaTick;
+        //body.velocity += moveDirection * moveSpeed * TickManager.deltaTick;
     }
     private void HandleLook() {
-        lookVector += InputManager.Instance.LookV2D() * 0.05f;
+        lookVector += InputManager.LookV2D() * 0.05f;
         lookVector.y = Mathf.Clamp(lookVector.y, -90, 90);
         transform.eulerAngles = Vector3.up * lookVector.x;
         head.localEulerAngles = Vector3.right * -lookVector.y;
